@@ -4,6 +4,9 @@
 #include <set>
 #include <vector>
 #include "md5.h"
+#include "sqlite3.h"
+
+
 using namespace std;
 
 string deletespaces(string str)
@@ -81,6 +84,7 @@ int main()
 	delete[] buf;
 	int shingle_size;
 	WCHAR filename[200];
+	//wstring name;
 	cout << "Укажите путь к файлу" << endl << endl;
 	wcin >> filename; // получаем имя файла
 	wcout << L"Попытка открыть файл "<< filename << endl << endl;
@@ -116,15 +120,77 @@ int main()
 	auto worktext = deletespaces(text);
 	worktext.push_back(' ');
 	cout << "Обработанный текст:\n" << worktext<<endl;
+
+
+	// Разбиение на шинглы
+
 	cout << "Введите размер шингла(в словах): ";
 	cin >> shingle_size;
 	auto shingles = DoShingle(worktext, shingle_size);
 	cout << "Получившиеся шинглы:" << endl;
 	for (auto i : shingles)
-		cout << i << "\t\tHASH:\t\t"<<md5(i)<< endl;
+		cout << i << "\t\t\t\tHASH:\t\t\t"<<md5(i)<< endl;
+
+	// Работа с базой данных
+	sqlite3* DB;
+	auto q = sqlite3_open("shingles.db", &DB);
+	if (q==0)
+		std::cout << "Opened Database Successfully!" << std::endl;
+	else
+	{
+		std::cerr << "Error open DB " << std::endl;
+		return (-1);
+	}
+	const char * errmsg;
+	sqlite3_stmt* pStatement;
+	//cout <<  << endl;
+	string SqlDrop = "DROP TABLE IF EXISTS file1;";
+
+	int result = sqlite3_prepare_v2(DB, SqlDrop.c_str(), -1, &pStatement, NULL);
+	if (result != SQLITE_OK)
+		errmsg = sqlite3_errmsg(DB);
+	result = sqlite3_step(pStatement);
+	if (result != SQLITE_DONE)
+	{
+		cout << "Не удалось удалить существующую таблицу!" << endl;
+		return 1;
+	}
+	sqlite3_finalize(pStatement);
 
 
-	// Разбиение на шинглы
+	string SqlCreate = "CREATE TABLE IF NOT EXISTS `file1`(`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,`shingle` VARCHAR(255),`hash` VARCHAR(255));";
+	result = sqlite3_prepare_v2(DB, SqlCreate.c_str(), -1, &pStatement, NULL);
+	if (result != SQLITE_OK)
+		errmsg = sqlite3_errmsg(DB);
+	result = sqlite3_step(pStatement);
+	if (result != SQLITE_DONE)
+	{
+		cout << "Таблица шинглов не была создана" << endl;
+		return 1;
+	}
+	sqlite3_finalize(pStatement); 
+	
+	// Добавление шинглов в таблицу
+	const char* errmsg_insert;
+	sqlite3_stmt* pStatement_insert;
+	string SqlInsert;
+	for (auto i : shingles)
+	{
+		SqlInsert = "INSERT INTO file1(shingle,hash) VALUES (\'" + i + "\',\'" + md5(i) + "\');";
+
+		result = sqlite3_prepare_v2(DB, SqlInsert.c_str(), -1, &pStatement_insert, NULL);
+		if (result != SQLITE_OK)
+			errmsg = sqlite3_errmsg(DB);
+		result = sqlite3_step(pStatement_insert);
+		if (result != SQLITE_DONE)
+		{
+			cout << "При записи шинглов в таблицу произошла ошибка!" << endl;
+		}
+		sqlite3_finalize(pStatement_insert);
+	}
+	
+	sqlite3_close(DB);
+
 
 
 	std::system("pause");
